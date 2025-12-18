@@ -40,20 +40,22 @@ class RoomManager {
     return room;
   }
 
-  static getRoom(roomId) {
-    return rooms.get(roomId);
-  }
+static getRoom(roomId) {
+    const upperId = roomId.toUpperCase(); // Always uppercase
+    return rooms.get(upperId);
+}
 
-  static joinRoom(roomId, socketId, userData) {
-    const room = rooms.get(roomId);
+static joinRoom(roomId, socketId, userData) {
+    const upperId = roomId.toUpperCase(); // Always uppercase
+    const room = rooms.get(upperId);
     if (!room) return null;
     
     room.participants.set(socketId, userData);
-    socketToRoom.set(socketId, roomId);
+    socketToRoom.set(socketId, upperId); // Store uppercase ID
     socketToUser.set(socketId, userData);
     
     return room;
-  }
+}
 
   static leaveRoom(socketId) {
     const roomId = socketToRoom.get(socketId);
@@ -76,15 +78,16 @@ class RoomManager {
     return roomId;
   }
 
-  static getParticipants(roomId) {
-    const room = rooms.get(roomId);
+static getParticipants(roomId) {
+    const upperId = roomId.toUpperCase(); // Always uppercase
+    const room = rooms.get(upperId);
     if (!room) return [];
     
     return Array.from(room.participants.entries()).map(([socketId, userData]) => ({
-      socketId,
-      ...userData
+        socketId,
+        ...userData
     }));
-  }
+}
 }
 
 // Room ID generation system
@@ -192,7 +195,7 @@ socket.on('create-room', (data, callback) => {
       }
       
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const existingParticipants = RoomManager.getParticipants(roomId);
+      const existingParticipants = RoomManager.getParticipants(normalizedRoomId);
       
       const userData = {
         userId,
@@ -204,10 +207,10 @@ socket.on('create-room', (data, callback) => {
         isHost: false
       };
       
-      RoomManager.joinRoom(roomId, socket.id, userData);
-      socket.join(roomId);
+        RoomManager.joinRoom(normalizedRoomId, socket.id, userData);
+        socket.join(normalizedRoomId);
       
-      console.log(`🚪 ${userName} joined room ${roomId}`);
+      console.log(`🚪 ${userName} joined room ${normalizedRoomId}`);
       
       // Notify existing participants
       existingParticipants.forEach(participant => {
@@ -221,7 +224,7 @@ socket.on('create-room', (data, callback) => {
       if (callback) {
         callback({
           success: true,
-          roomId,
+          roomId: normalizedRoomId,
           userId,
           isHost: false,
           participants: existingParticipants.map(p => ({
@@ -235,14 +238,24 @@ socket.on('create-room', (data, callback) => {
       }
       
       // Notify room about new user (after callback)
-      socket.to(roomId).emit('user-joined', {
+      socket.to(normalizedRoomId).emit('user-joined', {
         userId,
         userName,
         socketId: socket.id,
         isVideoOn: true,
         isAudioOn: true
       });
-      
+      console.log(`📤 user-joined event sent to room ${normalizedRoomId}`, {
+    event: 'user-joined',
+    toRoom: normalizedRoomId,
+    userId: userId,
+    userName: userName,
+    socketId: socket.id,
+    roomParticipants: Array.from(room.participants.keys())
+});
+
+const socketRoom = io.sockets.adapter.rooms.get(normalizedRoomId);
+console.log('👥 Sockets in room:', socketRoom ? Array.from(socketRoom) : 'No one');
     } catch (error) {
       console.error('Error joining room:', error);
       if (callback) {
