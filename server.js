@@ -118,6 +118,11 @@ socket.on('create-room', (data, callback) => {
     const userId = `user_${Date.now()}`;
     const roomId = generateRoomId();
 
+        console.log('🔍🔍🔍 DEBUG CREATE-ROOM 🔍🔍🔍');
+    console.log('Created room ID:', roomId);
+    console.log('User:', userName);
+    console.log('Socket ID:', socket.id);
+
     const userData = {
       userId,
       socketId: socket.id,
@@ -133,6 +138,8 @@ socket.on('create-room', (data, callback) => {
 
     console.log('Room created', roomId, userData);
     console.log(`🏠 Room created: ${roomId} by ${userName}`);
+
+     console.log('All rooms after creation:', Array.from(rooms.keys()));
 
     callback({
       success: true,
@@ -155,15 +162,27 @@ socket.on('create-room', (data, callback) => {
   // 2. JOIN ROOM
   socket.on('join-room', ({ roomId, userName, password }, callback) => {
     try {
-      const room = RoomManager.getRoom(roomId);
-      console.log("Joinroom", room)
-      
-      if (!room) {
-        if (callback) {
-          callback({ success: false, error: 'Room not found' });
-        }
-        return;
+    // CRITICAL DEBUG LOGS
+    console.log('🔍🔍🔍 DEBUG JOIN-ROOM START 🔍🔍🔍');
+    console.log('Room ID from client:', roomId);
+    console.log('Socket ID:', socket.id);
+    console.log('All existing rooms:', Array.from(rooms.keys()));
+    
+    // Normalize room ID to uppercase
+    const normalizedRoomId = roomId.toUpperCase();
+    console.log('Normalized room ID:', normalizedRoomId);
+    
+    const room = RoomManager.getRoom(normalizedRoomId);
+    console.log('Room found:', room);
+    console.log('Room participants:', room ? Array.from(room.participants.keys()) : 'NO ROOM');
+    
+    if (!room) {
+      console.log('❌ ROOM NOT FOUND - Available rooms:', Array.from(rooms.keys()));
+      if (callback) {
+        callback({ success: false, error: 'Room not found' });
       }
+      return;
+    }
       
       if (room.isLocked && room.password !== password) {
         if (callback) {
