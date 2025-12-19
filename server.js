@@ -139,6 +139,8 @@ socket.on('create-room', (data, callback) => {
     RoomManager.createRoom(roomId, userId, userName);
     RoomManager.joinRoom(roomId, socket.id, userData);
 
+    socket.join(roomId);
+
     console.log('Room created', roomId, userData);
     console.log(`🏠 Room created: ${roomId} by ${userName}`);
 
