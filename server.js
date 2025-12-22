@@ -108,7 +108,6 @@ io.on('connection', (socket) => {
 socket.on('create-room', (data, callback) => {
   try {
     console.log('CREATE ROOM DATA:', data);
-
     const { userName } = data;
 
     if (!userName || !userName.trim()) {
@@ -121,14 +120,15 @@ socket.on('create-room', (data, callback) => {
     const userId = `user_${Date.now()}`;
     const roomId = generateRoomId();
 
-        console.log('🔍🔍🔍 DEBUG CREATE-ROOM 🔍🔍🔍');
+    console.log('🔍🔍🔍 DEBUG CREATE-ROOM 🔍🔍🔍');
     console.log('Created room ID:', roomId);
     console.log('User:', userName);
     console.log('Socket ID:', socket.id);
 
+    // ⚠️ CRITICAL: Include socketId in userData
     const userData = {
       userId,
-      socketId: socket.id,
+      socketId: socket.id, // ⚠️ THIS IS IMPORTANT
       userName,
       isVideoOn: true,
       isAudioOn: true,
@@ -138,21 +138,25 @@ socket.on('create-room', (data, callback) => {
 
     RoomManager.createRoom(roomId, userId, userName);
     RoomManager.joinRoom(roomId, socket.id, userData);
-
     socket.join(roomId);
 
-    console.log('Room created', roomId, userData);
-    console.log(`🏠 Room created: ${roomId} by ${userName}`);
-
-     console.log('All rooms after creation:', Array.from(rooms.keys()));
+    console.log('🏠 Room created:', roomId, 'by', userName);
 
     callback({
       success: true,
       roomId,
       userId,
-      userName, // ✅ return it
+      userName,
       isHost: true,
-      participants: [userData], // ✅ include host
+      // ⚠️ Include socketId in the response
+      socketId: socket.id,
+      participants: [{
+        userId: userData.userId,
+        userName: userData.userName,
+        socketId: userData.socketId, // ⚠️ THIS MUST BE INCLUDED
+        isVideoOn: userData.isVideoOn,
+        isAudioOn: userData.isAudioOn
+      }]
     });
   } catch (error) {
     console.error('Error creating room:', error);
@@ -165,9 +169,8 @@ socket.on('create-room', (data, callback) => {
 
   
   // 2. JOIN ROOM
-  socket.on('join-room', ({ roomId, userName, password }, callback) => {
-    try {
-    // CRITICAL DEBUG LOGS
+socket.on('join-room', ({ roomId, userName, password }, callback) => {
+  try {
     console.log('🔍🔍🔍 DEBUG JOIN-ROOM START 🔍🔍🔍');
     console.log('Room ID from client:', roomId);
     console.log('Socket ID:', socket.id);
@@ -178,93 +181,89 @@ socket.on('create-room', (data, callback) => {
     console.log('Normalized room ID:', normalizedRoomId);
     
     const room = RoomManager.getRoom(normalizedRoomId);
-    console.log('Room found:', room);
-    console.log('Room participants:', room ? Array.from(room.participants.keys()) : 'NO ROOM');
+    console.log('Room found:', !!room);
     
     if (!room) {
-      console.log('❌ ROOM NOT FOUND - Available rooms:', Array.from(rooms.keys()));
+      console.log('❌ ROOM NOT FOUND');
       if (callback) {
         callback({ success: false, error: 'Room not found' });
       }
       return;
     }
-      
-      if (room.isLocked && room.password !== password) {
-        if (callback) {
-          callback({ success: false, error: 'Incorrect password' });
-        }
-        return;
-      }
-      
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const existingParticipants = RoomManager.getParticipants(normalizedRoomId);
-      
-      const userData = {
-        userId,
-        socketId: socket.id,
-        userName,
-        isVideoOn: true,
-        isAudioOn: true,
-        isScreenSharing: false,
-        isHost: false
-      };
-      
-        RoomManager.joinRoom(normalizedRoomId, socket.id, userData);
-        socket.join(normalizedRoomId);
-      
-      console.log(`🚪 ${userName} joined room ${normalizedRoomId}`);
-      
-      // Notify existing participants
-      existingParticipants.forEach(participant => {
-        io.to(participant.socketId).emit('user-joining', {
-          userId,
-          userName,
-          socketId: socket.id
-        });
-      });
-      
+    
+    if (room.isLocked && room.password !== password) {
       if (callback) {
-        callback({
-          success: true,
-          roomId: normalizedRoomId,
-          userId,
-          isHost: false,
-          participants: existingParticipants.map(p => ({
-            userId: p.userId,
-            userName: p.userName,
-            socketId: p.socketId,
-            isVideoOn: p.isVideoOn,
-            isAudioOn: p.isAudioOn
-          }))
-        });
+        callback({ success: false, error: 'Incorrect password' });
       }
-      
-      // Notify room about new user (after callback)
-      socket.to(normalizedRoomId).emit('user-joined', {
-        userId,
-        userName,
-        socketId: socket.id,
-        isVideoOn: true,
-        isAudioOn: true
-      });
-      console.log(`📤 user-joined event sent to room ${normalizedRoomId}`, {
-    event: 'user-joined',
-    toRoom: normalizedRoomId,
-    userId: userId,
-    userName: userName,
-    socketId: socket.id,
-    roomParticipants: Array.from(room.participants.keys())
-});
-
-const socketRoom = io.sockets.adapter.rooms.get(normalizedRoomId);
-console.log('👥 Sockets in room:', socketRoom ? Array.from(socketRoom) : 'No one');
-    } catch (error) {
-      console.error('Error joining room:', error);
-      if (callback) {
-        callback({ success: false, error: 'Failed to join room' });
-      }
+      return;
     }
-  });
+    
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const existingParticipants = RoomManager.getParticipants(normalizedRoomId);
+    
+    // ⚠️ CRITICAL: Create userData with ALL fields including socketId
+    const userData = {
+      userId,
+      socketId: socket.id, // ⚠️ THIS IS IMPORTANT
+      userName,
+      isVideoOn: true,
+      isAudioOn: true,
+      isScreenSharing: false,
+      isHost: false
+    };
+    
+    // ⚠️ CRITICAL: Join room FIRST
+    RoomManager.joinRoom(normalizedRoomId, socket.id, userData);
+    socket.join(normalizedRoomId);
+    
+    console.log(`🚪 ${userName} joined room ${normalizedRoomId}`);
+    
+    // ⚠️ FIXED: Send to ALL participants (including the joiner) with callback
+    if (callback) {
+      callback({
+        success: true,
+        roomId: normalizedRoomId,
+        userId,
+        userName,
+        isHost: false,
+        hostId: room.host,
+        // ⚠️ CRITICAL: Include socketId in participant data
+        participants: existingParticipants.map(p => ({
+          userId: p.userId,
+          userName: p.userName,
+          socketId: p.socketId, // ⚠️ THIS MUST BE INCLUDED
+          isVideoOn: p.isVideoOn !== undefined ? p.isVideoOn : true,
+          isAudioOn: p.isAudioOn !== undefined ? p.isAudioOn : true
+        }))
+      });
+    }
+    
+    // ⚠️ CRITICAL: Notify existing participants about new user
+    // Use 'user-joined' event (NOT 'user-joining')
+    socket.to(normalizedRoomId).emit('user-joined', {
+      userId: userData.userId,
+      userName: userData.userName,
+      socketId: userData.socketId, // ⚠️ MUST INCLUDE socketId
+      isVideoOn: userData.isVideoOn,
+      isAudioOn: userData.isAudioOn
+    });
+    
+    console.log(`📤 user-joined event sent to room ${normalizedRoomId}`, {
+      event: 'user-joined',
+      userId: userData.userId,
+      userName: userData.userName,
+      socketId: userData.socketId,
+      roomId: normalizedRoomId,
+      existingParticipants: existingParticipants.length
+    });
+    
+  } catch (error) {
+    console.error('Error joining room:', error);
+    if (callback) {
+      callback({ success: false, error: 'Failed to join room' });
+    }
+  }
+});
   
   // 3. WEBRTC SIGNALING
   socket.on('webrtc-offer', ({ to, offer, from }) => {
